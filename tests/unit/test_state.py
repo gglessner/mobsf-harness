@@ -55,11 +55,70 @@ def test_latest_completed_scan_skips_failed(store: StateStore):
     assert latest.id == s1.id
 
 
-def test_artifact_hash_is_unique_per_app(store: StateStore):
+def test_same_sha_allowed_across_scans(store: StateStore):
+    """Historically UNIQUE(app_id, sha256) blocked retries after a crash or
+    --force-rescan. That constraint was dropped; same-sha rows are now allowed
+    so the pipeline can rescan the same artifact and keep audit history."""
     app = store.get_or_create_app("android", "com.example", "play_store")
-    store.create_scan(app.id, "1.0", "1", "same_hash", "r1")
-    with pytest.raises(Exception):
-        store.create_scan(app.id, "1.1", "2", "same_hash", "r2")
+    a = store.create_scan(app.id, "1.0", "1", "same_hash", "r1")
+    b = store.create_scan(app.id, "1.1", "2", "same_hash", "r2")
+    assert a.id != b.id
+    assert a.sha256 == b.sha256 == "same_hash"
+
+
+def test_legacy_sha_unique_is_migrated_away(tmp_path: Path):
+    """A DB created with the old UNIQUE(app_id, sha256) constraint should be
+    silently migrated on initialize() so new inserts don't fail.
+
+    Crucially, the legacy DB also has findings/notifications rows whose FKs
+    point at scans(id) — rebuilding the scans table without disabling FK
+    enforcement would fail with IntegrityError. This test exercises that path.
+    """
+    import sqlite3
+    db = tmp_path / "legacy.sqlite"
+    legacy = sqlite3.connect(db)
+    legacy.executescript(
+        """
+        CREATE TABLE apps (id INTEGER PRIMARY KEY, platform TEXT NOT NULL,
+          identifier TEXT NOT NULL, source TEXT NOT NULL,
+          first_seen TEXT NOT NULL, last_checked TEXT,
+          UNIQUE(platform, identifier));
+        CREATE TABLE scans (id INTEGER PRIMARY KEY,
+          app_id INTEGER NOT NULL REFERENCES apps(id),
+          version_name TEXT, version_code TEXT, sha256 TEXT NOT NULL,
+          started_at TEXT NOT NULL, finished_at TEXT, status TEXT NOT NULL,
+          error_message TEXT, report_dir TEXT, mobsf_scan_hash TEXT,
+          UNIQUE(app_id, sha256));
+        CREATE TABLE findings (id INTEGER PRIMARY KEY,
+          scan_id INTEGER NOT NULL REFERENCES scans(id),
+          finding_key TEXT NOT NULL, severity TEXT NOT NULL,
+          title TEXT NOT NULL, raw TEXT NOT NULL);
+        CREATE TABLE notifications (id INTEGER PRIMARY KEY,
+          scan_id INTEGER NOT NULL REFERENCES scans(id),
+          channel TEXT NOT NULL, severity TEXT NOT NULL,
+          body TEXT NOT NULL, sent_at TEXT, error_message TEXT);
+        INSERT INTO apps(platform, identifier, source, first_seen)
+          VALUES ('android', 'com.e', 'play_store', '2026-04-20T00:00:00+00:00');
+        INSERT INTO scans(app_id, version_name, version_code, sha256,
+                          started_at, status, report_dir)
+          VALUES (1, '1.0', '1', 'h', '2026-04-20T00:00:00+00:00', 'failed', 'r1');
+        INSERT INTO findings(scan_id, finding_key, severity, title, raw)
+          VALUES (1, 'RULE_X', 'high', 't', '{}');
+        INSERT INTO notifications(scan_id, channel, severity, body)
+          VALUES (1, 'log', 'high', 'body');
+        """
+    )
+    legacy.commit()
+    legacy.close()
+
+    store = StateStore(db)
+    store.initialize()   # must migrate without breaking FKs
+
+    # Child rows survived the swap
+    assert len(store.findings_for_scan(1)) == 1
+    assert len(store.notifications_for_scan(1)) == 1
+    # And the UNIQUE is gone: same-sha insert works
+    store.create_scan(1, "1.0", "1", "h", "r1-retry")
 
 
 def test_findings_roundtrip(store: StateStore):

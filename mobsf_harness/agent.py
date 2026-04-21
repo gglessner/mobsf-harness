@@ -127,7 +127,10 @@ def run_agent(
                         summary_written = True
                 except Exception:
                     pass
-        messages.append(Message(role="tool", tool_results=results))
+        # Emit one tool message per ToolResult — OpenAI's API requires this,
+        # and Anthropic handles consecutive user messages fine.
+        for r in results:
+            messages.append(Message(role="tool", tool_results=[r]))
 
     err = f"max_turns reached ({max_turns})"
     _failsafe_notify(state, scan_id, err)

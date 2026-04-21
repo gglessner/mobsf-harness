@@ -130,3 +130,73 @@ def test_max_turns_enforced(
 
     assert outcome.success is False
     assert outcome.turns == 3
+
+
+def test_multiple_tool_calls_in_one_turn_emit_separate_tool_messages(
+    tmp_path: Path, state: StateStore, report: dict
+):
+    """Regression: when the model makes multiple tool calls in one turn,
+    the loop must emit one tool-role Message per ToolResult (OpenAI
+    requires it; Anthropic handles it either way)."""
+    responses = [
+        LlmResponse(
+            text="",
+            tool_calls=[
+                ToolCall(id="a", name="get_report_section", arguments={"name": "severity"}),
+                ToolCall(id="b", name="get_report_section", arguments={"name": "permissions"}),
+            ],
+            stop_reason="tool_use",
+            usage_input_tokens=0,
+            usage_output_tokens=0,
+        ),
+        LlmResponse(
+            text="",
+            tool_calls=[
+                ToolCall(id="c", name="write_summary", arguments={"markdown": "# ok"})
+            ],
+            stop_reason="tool_use",
+            usage_input_tokens=0,
+            usage_output_tokens=0,
+        ),
+        LlmResponse(
+            text="done", tool_calls=[], stop_reason="end_turn",
+            usage_input_tokens=0, usage_output_tokens=0,
+        ),
+    ]
+    captured: list = []
+    class _SpyClient(FakeLlmClient):
+        def chat(self, *, system, messages, tools, model, max_output_tokens=4096):
+            captured.append([m for m in messages])
+            return super().chat(
+                system=system, messages=messages, tools=tools,
+                model=model, max_output_tokens=max_output_tokens,
+            )
+    client = _SpyClient(responses)
+    app = state.get_or_create_app("android", "com.e", "play_store")
+    scan = state.create_scan(app.id, "1", "1", "h", "r")
+
+    outcome = run_agent(
+        llm_client=client,
+        model="fake",
+        max_turns=10,
+        max_tokens_per_session=10_000,
+        tools=[t for t in build_tool_registry()],
+        report_json=report,
+        report_dir=tmp_path,
+        summary_path=tmp_path / "summary.md",
+        state=state,
+        scan_id=scan.id,
+        app_id=app.id,
+        system="s",
+        user_prompt="u",
+    )
+
+    assert outcome.success is True
+    # On turn 2, the message history fed back to the LLM should contain
+    # TWO separate tool-role messages (one per call from turn 1's response),
+    # not a single tool-role message with two results.
+    turn2_messages = captured[1]
+    tool_msgs = [m for m in turn2_messages if m.role == "tool"]
+    assert len(tool_msgs) == 2, f"expected 2 tool messages, got {len(tool_msgs)}"
+    for m in tool_msgs:
+        assert len(m.tool_results) == 1, "each tool message must carry exactly one result"

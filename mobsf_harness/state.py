@@ -30,8 +30,7 @@ CREATE TABLE IF NOT EXISTS scans (
   status TEXT NOT NULL,
   error_message TEXT,
   report_dir TEXT,
-  mobsf_scan_hash TEXT,
-  UNIQUE(app_id, sha256)
+  mobsf_scan_hash TEXT
 );
 
 CREATE TABLE IF NOT EXISTS findings (
@@ -116,6 +115,52 @@ class StateStore:
 
     def initialize(self) -> None:
         self._conn.executescript(SCHEMA)
+        self._migrate_drop_legacy_sha_unique()
+
+    def _migrate_drop_legacy_sha_unique(self) -> None:
+        # v0.1.0 originally had UNIQUE(app_id, sha256) on scans, which prevented
+        # any retry after a crash or --force-rescan. Detect the legacy inline
+        # constraint (via the sqlite-auto-generated index) and rebuild without it.
+        # FKs from findings/notifications point at scans(id); swapping the table
+        # briefly leaves those references dangling, so FK enforcement has to be
+        # disabled for the duration of the swap (must be toggled outside a txn).
+        row = self._conn.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type='index' AND tbl_name='scans' "
+            "  AND name LIKE 'sqlite_autoindex_scans_%'"
+        ).fetchone()
+        if row is None:
+            return
+        self._conn.execute("PRAGMA foreign_keys = OFF")
+        try:
+            self._conn.executescript(
+                """
+                BEGIN;
+                CREATE TABLE scans_new (
+                  id INTEGER PRIMARY KEY,
+                  app_id INTEGER NOT NULL REFERENCES apps(id),
+                  version_name TEXT,
+                  version_code TEXT,
+                  sha256 TEXT NOT NULL,
+                  started_at TEXT NOT NULL,
+                  finished_at TEXT,
+                  status TEXT NOT NULL,
+                  error_message TEXT,
+                  report_dir TEXT,
+                  mobsf_scan_hash TEXT
+                );
+                INSERT INTO scans_new
+                  SELECT id, app_id, version_name, version_code, sha256,
+                         started_at, finished_at, status, error_message,
+                         report_dir, mobsf_scan_hash
+                  FROM scans;
+                DROP TABLE scans;
+                ALTER TABLE scans_new RENAME TO scans;
+                COMMIT;
+                """
+            )
+        finally:
+            self._conn.execute("PRAGMA foreign_keys = ON")
 
     def close(self) -> None:
         self._conn.close()
