@@ -1,0 +1,11 @@
+[Unit]
+Description=MOBSF Harness daily scan timer
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=30min
+Persistent=true
+Unit=mobsf-harness.service
+
+[Install]
+WantedBy=timers.target

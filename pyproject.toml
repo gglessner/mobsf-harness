@@ -1,0 +1,45 @@
+[project]
+name = "mobsf-harness"
+version = "0.1.0"
+description = "Scheduled MOBSF analysis with a bounded AI agent loop"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "GPL-3.0-or-later"}
+authors = [
+    {name = "Garland Glessner", email = "gglessner@gmail.com"},
+]
+dependencies = [
+    "pydantic>=2.6",
+    "pyyaml>=6.0",
+    "httpx>=0.27",
+    "click>=8.1",
+    "tenacity>=8.2",
+    "anthropic>=0.40",
+    "openai>=1.50",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+mobsf-harness = "mobsf_harness.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "e2e: end-to-end tests that need real MOBSF and real LLM (MOBSF_HARNESS_E2E=1)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

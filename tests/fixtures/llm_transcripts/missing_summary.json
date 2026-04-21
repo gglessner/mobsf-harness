@@ -1,0 +1,14 @@
+[
+  {
+    "text": "I keep thinking...",
+    "tool_calls": [
+      {"id": "c1", "name": "get_report_section", "arguments": {"name": "permissions"}}
+    ],
+    "stop_reason": "tool_use"
+  },
+  {
+    "text": "Still thinking...",
+    "tool_calls": [],
+    "stop_reason": "end_turn"
+  }
+]

@@ -1,0 +1,10 @@
+[Unit]
+Description=MOBSF Harness scheduled scan
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/mobsf-harness
+EnvironmentFile=/etc/mobsf-harness/env
+ExecStart=/opt/mobsf-harness/.venv/bin/mobsf-harness run
+User=mobsf-harness

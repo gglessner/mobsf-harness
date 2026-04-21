@@ -1,0 +1,21 @@
+[
+  {
+    "text": "I'll review this scan.",
+    "tool_calls": [
+      {"id": "c1", "name": "get_report_section", "arguments": {"name": "severity"}}
+    ],
+    "stop_reason": "tool_use"
+  },
+  {
+    "text": "",
+    "tool_calls": [
+      {"id": "c2", "name": "write_summary", "arguments": {"markdown": "# Summary\n\nAll clear."}}
+    ],
+    "stop_reason": "tool_use"
+  },
+  {
+    "text": "Done.",
+    "tool_calls": [],
+    "stop_reason": "end_turn"
+  }
+]

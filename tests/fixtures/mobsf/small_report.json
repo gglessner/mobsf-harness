@@ -1,0 +1,15 @@
+{
+  "app_name": "com.example.app",
+  "version_name": "1.2.3",
+  "version_code": "4501",
+  "file_name": "com.example.app.apk",
+  "hash": "aaaa1111bbbb2222",
+  "size": "12.3MB",
+  "sha256": "abc123",
+  "severity": {"high": 1, "medium": 2, "low": 3, "info": 4},
+  "permissions": {"android.permission.INTERNET": {"status": "normal"}},
+  "manifest_analysis": {"manifest_findings": []},
+  "code_analysis": {"findings": {}},
+  "network_security": {"network_findings": []},
+  "secrets": []
+}

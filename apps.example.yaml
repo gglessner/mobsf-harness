@@ -1,0 +1,33 @@
+defaults:
+  dynamic_analysis: false
+  notification_channels: [log]
+
+mobsf:
+  url: http://localhost:8000
+  api_key_env: MOBSF_API_KEY
+
+llm:
+  provider: anthropic
+  model: claude-opus-4-7
+  base_url: null
+  api_key_env: ANTHROPIC_API_KEY
+  max_turns: 12
+  max_tokens_per_session: 100000
+
+web_search:
+  backend: tavily
+  api_key_env: TAVILY_API_KEY
+
+notifications:
+  log:
+    path: ./notifications.jsonl
+
+policy: |
+  Notify on any NEW high/critical finding, any new exported activity,
+  or any new hardcoded secret. Recurring issues are not news.
+
+apps:
+  - platform: android
+    package_id: com.example.app
+    source: play_store
+    notification_channels: [log]
